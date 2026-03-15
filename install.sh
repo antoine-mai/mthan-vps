@@ -36,77 +36,54 @@ for arg in "$@"; do
   fi
 done
 
-# 0. Cleanup old versions and migration
-echo "Cleaning up old Root Panel versions..."
+# 0. Cleanup old versions
+echo "Cleaning up any existing MTHAN services and files..."
 
-# Backup config ONLY if it's a reinstall
-CONFIG_BACKUP="/tmp/mthan_config_backup.yaml"
-rm -f "$CONFIG_BACKUP"
+# Stop and disable all services starting with mthan-
+for service in $(systemctl list-unit-files 'mthan-*' --no-legend | awk '{print $1}'); do
+    echo "Removing service: $service"
+    systemctl stop "$service" || true
+    systemctl disable "$service" || true
+    rm -f "/etc/systemd/system/$service"
+done
 
-if [ "$IS_REINSTALL" = true ]; then
-    if [ -f "/root/.mthan/root/config.yaml" ]; then
-        echo "Backing up current configuration..."
-        cp "/root/.mthan/root/config.yaml" "$CONFIG_BACKUP"
-    elif [ -f "/root/.mthan/vps/config.yaml" ]; then
-        echo "Backing up legacy configuration..."
-        cp "/root/.mthan/vps/config.yaml" "$CONFIG_BACKUP"
-    fi
-fi
+# Reload systemd to recognize removed services
+systemctl daemon-reload
 
-# Stop and cleanup legacy service if exists
-if systemctl is-active --quiet mthan-vps.service; then
-    echo "Stopping legacy mthan-vps service..."
-    systemctl stop mthan-vps.service || true
-    systemctl disable mthan-vps.service || true
-    rm -f /etc/systemd/system/mthan-vps.service
-fi
+# Full cleanup of installation directory
+echo "Removing old installation files..."
+rm -rf /root/.mthan
 
-# Delete old folders (only if NOT a reinstall)
-if [ "$IS_REINSTALL" = false ]; then
-    echo "Performing full cleanup of /root/.mthan..."
-    rm -rf /root/.mthan
-else
-    echo "Reinstall mode: Preserving /root/.mthan directory structure..."
-fi
-rm -f /etc/systemd/system/mthan-user@.service
+# 1. Create target directories
+echo "Creating directories..."
+mkdir -p /usr/local/bin/mthan
+mkdir -p /root/.mthan/vps/data
+mkdir -p /root/.mthan/vps/logging
+mkdir -p /root/.mthan/vps/database
 
-# 1. Create target directory
-echo "Creating directory /root/.mthan/root..."
-mkdir -p /root/.mthan/root/data
-mkdir -p /root/.mthan/root/logging
-mkdir -p /root/.mthan/root/modules
-
-# Restore config if backup exists (only happens in reinstall mode)
-if [ -f "$CONFIG_BACKUP" ]; then
-    echo "Restoring configuration..."
-    mv "$CONFIG_BACKUP" /root/.mthan/root/config.yaml
-fi
-
-# 2. Download binaries and scripts
-echo "Downloading Root Panel from mthan-public..."
+# 2. Download binary and scripts
+echo "Downloading MTHAN VPS Binary to /usr/local/bin/mthan..."
 BASE_URL="https://raw.githubusercontent.com/antoine-mai/mthan-public/main"
 
-# Download Root Binary
-wget -q "$BASE_URL/bin/root" -O /root/.mthan/root/app
+# Download the vps binary into the mthan folder
+wget -q "$BASE_URL/mthan/vps" -O /usr/local/bin/mthan/vps
+chmod +x /usr/local/bin/mthan/vps
+
 # Download Uninstall Script
-wget -q "$BASE_URL/uninstall.sh" -O /root/.mthan/root/uninstall.sh
+wget -q "$BASE_URL/uninstall.sh" -O /root/.mthan/vps/uninstall.sh
+chmod +x /root/.mthan/vps/uninstall.sh
 
-chmod +x /root/.mthan/root/app
-chmod +x /root/.mthan/root/uninstall.sh
+# 4. Create systemd service for MTHAN VPS
+echo "Configuring MTHAN VPS service..."
 
-# Note: User Panel (mthan-user) will be downloaded on-demand from the Root Panel UI
-
-# 4. Create systemd service for Root Panel
-echo "Configuring Root Panel service..."
-
-cat <<EOF > /etc/systemd/system/mthan-app.service
+cat <<EOF > /etc/systemd/system/mthan-vps.service
 [Unit]
-Description=MTHAN APP Root Panel
+Description=MTHAN VPS Platform Service
 After=network.target
 
 [Service]
-ExecStart=/root/.mthan/root/app
-WorkingDirectory=/root/.mthan/root
+ExecStart=/usr/local/bin/mthan/vps
+WorkingDirectory=/root/.mthan/vps
 Restart=always
 User=root
 
@@ -114,62 +91,49 @@ User=root
 WantedBy=multi-user.target
 EOF
 
-# Note: User Panel service template will be created when installing User Panel from UI
-
-# 5. Start Root Panel service
-echo "Starting Root Panel..."
+# 5. Start VPS service
+echo "Starting MTHAN VPS service..."
 systemctl daemon-reload
-systemctl enable mthan-app.service
+systemctl enable mthan-vps.service
+systemctl start mthan-vps.service
 
-if systemctl is-active --quiet mthan-app.service; then
-    echo "Restarting mthan-app.service..."
-    systemctl restart mthan-app.service
-else
-    echo "Starting mthan-app.service..."
-    systemctl start mthan-app.service
-fi
+# 6. Wait a moment for app to generate config if it's first run
+sleep 2
 
-# 6. Generate/Read config and show message
-CONFIG_FILE="/root/.mthan/root/config.yaml"
+CONFIG_FILE="/root/.mthan/vps/config.yaml"
 if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Generating default configuration..."
-    PASSWORD=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 12 ; echo '')
-    echo "port: 2205" > "$CONFIG_FILE"
-    echo "username: root" >> "$CONFIG_FILE"
-    echo "password: $PASSWORD" >> "$CONFIG_FILE"
-    echo "hostname: localhost" >> "$CONFIG_FILE"
-    chmod 600 "$CONFIG_FILE"
+    echo "Waiting for application to initialize configuration..."
+    sleep 3
 fi
 
-# Read current credentials
-USERNAME=$(grep "username:" "$CONFIG_FILE" | cut -d' ' -f2)
-PASSWORD=$(grep "password:" "$CONFIG_FILE" | cut -d' ' -f2)
-PORT=$(grep "port:" "$CONFIG_FILE" | cut -d' ' -f2)
+# Read port from config
+PORT=$(grep "port:" "$CONFIG_FILE" | sed 's/.*port: //' | tr -d ' "')
 
-# Cleanup legacy Caddyfile if exists (now moved to /etc/caddy/Caddyfile.d)
-rm -f /root/.mthan/root/Caddyfile
+# Cleanup legacy
+rm -f /root/.mthan/vps/Caddyfile
 
 # Improved IP detection (Force IPv4)
 IP=$(curl -s -4 https://ifconfig.me || curl -s -4 https://api.ipify.org || echo "YOUR_SERVER_IP")
 
 # 6. Configure Firewall
 echo "Configuring firewall..."
-if command -v ufw >/dev/null; then
-    if ufw status | grep -q "Status: active"; then
-        echo "Opening port $PORT in UFW..."
-        ufw allow "$PORT/tcp"
+if [ -n "$PORT" ]; then
+    if command -v ufw >/dev/null; then
+        if ufw status | grep -q "Status: active"; then
+            echo "Opening port $PORT in UFW..."
+            ufw allow "$PORT/tcp"
+        fi
+    elif command -v firewall-cmd >/dev/null; then
+        echo "Opening port $PORT in firewalld..."
+        firewall-cmd --permanent --add-port="$PORT/tcp"
+        firewall-cmd --reload
     fi
-elif command -v firewall-cmd >/dev/null; then
-    echo "Opening port $PORT in firewalld..."
-    firewall-cmd --permanent --add-port="$PORT/tcp"
-    firewall-cmd --reload
 fi
 
 echo -e "\n${GREEN}============================================${NC}"
 echo -e "${GREEN}   INSTALLATION COMPLETE${NC}"
 echo -e "${GREEN}============================================${NC}"
 echo -e "URL:        http://${IP}:${PORT}"
-echo -e "Username:   $USERNAME"
-echo -e "Password:   $PASSWORD"
-echo -e "To uninstall, run: /root/.mthan/root/uninstall.sh"
-echo -e "IMPORTANT: Ensure port ${PORT} is open in your cloud firewall (e.g., AWS/GCP/Azure console).\n"
+echo -e "Access:     Login using your Linux system users"
+echo -e "To uninstall, run: /root/.mthan/vps/uninstall.sh"
+echo -e "IMPORTANT: Ensure port ${PORT} is open in your cloud firewall.\n"

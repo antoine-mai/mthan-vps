@@ -6,7 +6,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 
-echo -e "${RED}Uninstalling MTHAN APP...${NC}"
+echo -e "${RED}Uninstalling MTHAN VPS Platform...${NC}"
 
 # Check root
 if [ "$EUID" -ne 0 ]; then
@@ -15,10 +15,10 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 # Detect port from config
-CONFIG_FILE="/root/.mthan/root/config.yaml"
-PORT=2205
+CONFIG_FILE="/root/.mthan/vps/config.yaml"
+PORT=8080
 if [ -f "$CONFIG_FILE" ]; then
-    PORT=$(grep "port:" "$CONFIG_FILE" | cut -d' ' -f2)
+    PORT=$(grep "port:" "$CONFIG_FILE" | sed 's/.*port: //' | tr -d ' "')
 fi
 
 # Cleanup Firewall
@@ -34,37 +34,29 @@ elif command -v firewall-cmd >/dev/null; then
     firewall-cmd --reload
 fi
 
-# Stop and disable main service
-if systemctl is-active --quiet mthan-app.service; then
-    echo "Stopping mthan-app service..."
-    systemctl stop mthan-app.service
-fi
-if [ -f /etc/systemd/system/mthan-app.service ]; then
-    echo "Removing mthan-app service..."
-    systemctl disable mthan-app.service
-    rm /etc/systemd/system/mthan-app.service
-fi
-
-# Stop all user services
-echo "Stopping all user panel services..."
-systemctl stop "mthan-user@*.service" || true
-
-# Remove user service template
-if [ -f /etc/systemd/system/mthan-user@.service ]; then
-    echo "Removing mthan-user template service..."
-    rm /etc/systemd/system/mthan-user@.service
-fi
+# Stop and disable all mthan-* services
+echo "Stopping all MTHAN services..."
+for service in $(systemctl list-unit-files 'mthan-*' --no-legend | awk '{print $1}'); do
+    echo "Removing service: $service"
+    systemctl stop "$service" || true
+    systemctl disable "$service" || true
+    rm -f "/etc/systemd/system/$service"
+done
 
 systemctl daemon-reload
 
 echo "Removing application binaries and data..."
-rm -f /usr/local/bin/mthan-user
-rm -f /etc/caddy/Caddyfile.d/mthan.conf
 
-# Remove the entire .mthan directory
+# Remove the mthan bin directory
+if [ -d /usr/local/bin/mthan ]; then
+    echo "Removing /usr/local/bin/mthan directory..."
+    rm -rf /usr/local/bin/mthan
+fi
+
+# Remove the working directory
 if [ -d /root/.mthan ]; then
     echo "Removing /root/.mthan directory..."
     rm -rf /root/.mthan
 fi
 
-echo -e "${GREEN}MTHAN APP has been uninstalled.${NC}"
+echo -e "${GREEN}MTHAN VPS Platform has been completely uninstalled.${NC}"

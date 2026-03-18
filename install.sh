@@ -21,11 +21,11 @@ fi
 
 echo "Checking and installing dependencies..."
 if [ -f /etc/debian_version ]; then
-    apt-get update && apt-get install -y curl wget
+    apt-get update && apt-get install -y curl git
 elif [ -f /etc/redhat-release ]; then
-    dnf install -y curl wget || yum install -y curl wget
+    dnf install -y curl git || yum install -y curl git
 elif [ -f /etc/arch-release ]; then
-    pacman -Sy --noconfirm curl wget
+    pacman -Sy --noconfirm curl git
 fi
 
 # Parse arguments
@@ -64,17 +64,22 @@ mkdir -p /root/.mthan/vps/data
 mkdir -p /root/.mthan/vps/logging
 mkdir -p /root/.mthan/vps/database
 
-# 2. Download binary and scripts
-echo "Downloading MTHAN VPS Binary to /usr/local/bin/mthan..."
-BASE_URL="https://raw.githubusercontent.com/antoine-mai/mthan-vps/main"
+# 2. Clone repository and deploy
+echo "Cloning MTHAN VPS repository to temporary directory..."
+TEMP_DIR="/tmp/mthan-install-$(date +%s)"
+rm -rf "$TEMP_DIR"
+git clone --depth 1 "https://github.com/antoine-mai/mthan-vps.git" "$TEMP_DIR"
 
-# Download the vps binary into the mthan folder (no -q to see progress)
-wget "$BASE_URL/mthan/vps" -O /usr/local/bin/mthan/vps
+echo "Deploying MTHAN VPS binary..."
+cp "$TEMP_DIR/mthan/vps" /usr/local/bin/mthan/vps
 chmod +x /usr/local/bin/mthan/vps
 
-# Download Uninstall Script
-wget "$BASE_URL/uninstall.sh" -O /root/.mthan/vps/uninstall.sh
+echo "Deploying maintenance scripts..."
+cp "$TEMP_DIR/uninstall.sh" /root/.mthan/vps/uninstall.sh
 chmod +x /root/.mthan/vps/uninstall.sh
+
+# Cleanup temp files
+rm -rf "$TEMP_DIR"
 
 # 4. Create systemd service for MTHAN VPS
 echo "Configuring MTHAN VPS service..."

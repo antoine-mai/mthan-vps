@@ -20,21 +20,25 @@ Built with **Go** and **React**, MTHAN provides a premium, unified experience fo
 
 Ensure you are running on a clean **Ubuntu, Debian, CentOS, or Arch** server, then execute:
 
+### ✨ Installation (CLEAN INSTALL)
+> [!WARNING]
+> This command will **WIPE ALL DATA** in `/root/.mthan/`. Use this only for fresh installations.
+
 ```bash
 curl -sSL https://raw.githubusercontent.com/antoine-mai/mthan-vps/main/install.sh | bash
 ```
 
 ### 🖥️ Accessing the Panel
-- **URL**: `http://YOUR_SERVER_IP:2205`
-- **Port**: `2205` (Default)
-- **Authenticaton**: Use your existing **Linux System Users** to log in.
+*   **URL**: `http://YOUR_SERVER_IP:2205`
+*   **Port**: `2205` (Default)
+*   **Authentication**: Use your existing **Linux System Users** to log in.
 
 ---
 
 ## 🛠️ Maintenance & Repair
 
-### 🔄 Updating or Repairing
-If you need to update to the latest version or fix a corrupted binary while **keeping all your data and configurations**, use the repair flag:
+### 🔄 Updating (REPAIR MODE)
+To update the binary or fix a corrupted installation **while keeping all your data and configurations**, use the repair flag:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/antoine-mai/mthan-vps/main/install.sh | bash -s -- --repair

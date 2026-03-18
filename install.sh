@@ -36,21 +36,28 @@ for arg in "$@"; do
   fi
 done
 
-# 0. Cleanup old services (but keep data)
-echo "Stopping existing MTHAN services..."
-
-# Stop and disable all services starting with mthan-
-for service in $(systemctl list-unit-files 'mthan-*' --no-legend | awk '{print $1}'); do
-    echo "Stopping service: $service"
-    systemctl stop "$service" || true
-    systemctl disable "$service" || true
-    rm -f "/etc/systemd/system/$service"
-done
+# 0. Service & Data Management
+if [ "$IS_REPAIR" = true ]; then
+    echo "Repair mode: Stopping MTHAN VPS service..."
+    systemctl stop mthan-vps.service || true
+    echo "Preserving existing data and configurations..."
+else
+    echo "Clean installation: Stopping and removing ALL MTHAN services..."
+    # Stop and disable all services starting with mthan-
+    for service in $(systemctl list-unit-files 'mthan-*' --no-legend | awk '{print $1}'); do
+        echo "Removing service: $service"
+        systemctl stop "$service" || true
+        systemctl disable "$service" || true
+        rm -f "/etc/systemd/system/$service"
+    done
+    echo "Removing old application data and configs..."
+    rm -rf /root/.mthan
+fi
 
 # Reload systemd
 systemctl daemon-reload
 
-# 1. Create target directories (mkdir -p preserves existing)
+# 1. Create target directories (mkdir -p preserves existing if they weren't deleted)
 echo "Ensuring directories exist..."
 mkdir -p /usr/local/bin/mthan
 mkdir -p /root/.mthan/vps/data

@@ -135,20 +135,16 @@ IP=$(curl -s -4 https://ifconfig.me || curl -s -4 https://api.ipify.org || echo 
 # 6. Configure Firewall
 echo "Configuring firewall..."
 if [ -n "$PORT" ]; then
-    # Check UFW
+    # Check UFW (Common on Debian/Ubuntu)
     if command -v ufw >/dev/null; then
-        if ufw status | grep -q "Status: active"; then
-            echo "Opening port $PORT in UFW..."
-            ufw allow "$PORT/tcp"
-        fi
+        echo "Adding UFW rule for port $PORT..."
+        ufw allow "$PORT/tcp" || true
     fi
-    # Check Firewalld (Common on RPM systems like CentOS/Fedora)
+    # Check Firewalld (Common on RPM/Arch)
     if command -v firewall-cmd >/dev/null; then
-        if firewall-cmd --state >/dev/null 2>&1; then
-            echo "Opening port $PORT in firewalld..."
-            firewall-cmd --permanent --add-port="$PORT/tcp"
-            firewall-cmd --reload
-        fi
+        echo "Adding Firewalld rule for port $PORT..."
+        firewall-cmd --permanent --add-port="$PORT/tcp" || true
+        firewall-cmd --reload || true
     fi
 fi
 

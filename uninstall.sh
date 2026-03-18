@@ -23,15 +23,22 @@ fi
 
 # Cleanup Firewall
 echo "Cleaning up firewall rules..."
-if command -v ufw >/dev/null; then
-    if ufw status | grep -q "Status: active"; then
-        echo "Closing port $PORT in UFW..."
-        ufw delete allow "$PORT/tcp"
+if [ -n "$PORT" ]; then
+    # Cleanup UFW
+    if command -v ufw >/dev/null; then
+        if ufw status | grep -q "Status: active"; then
+            echo "Closing port $PORT in UFW..."
+            ufw delete allow "$PORT/tcp"
+        fi
     fi
-elif command -v firewall-cmd >/dev/null; then
-    echo "Closing port $PORT in firewalld..."
-    firewall-cmd --permanent --remove-port="$PORT/tcp"
-    firewall-cmd --reload
+    # Cleanup Firewalld
+    if command -v firewall-cmd >/dev/null; then
+        if firewall-cmd --state >/dev/null 2>&1; then
+            echo "Closing port $PORT in firewalld..."
+            firewall-cmd --permanent --remove-port="$PORT/tcp"
+            firewall-cmd --reload
+        fi
+    fi
 fi
 
 # Stop and disable all mthan-* services

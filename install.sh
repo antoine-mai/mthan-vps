@@ -21,41 +21,37 @@ fi
 
 echo "Checking and installing dependencies..."
 if [ -f /etc/debian_version ]; then
-    apt-get update && apt-get install -y git curl
+    apt-get update && apt-get install -y curl wget
 elif [ -f /etc/redhat-release ]; then
-    dnf install -y git curl || yum install -y git curl
+    dnf install -y curl wget || yum install -y curl wget
 elif [ -f /etc/arch-release ]; then
-    pacman -Sy --noconfirm git curl
+    pacman -Sy --noconfirm curl wget
 fi
 
 # Parse arguments
-IS_REINSTALL=false
+IS_REPAIR=false
 for arg in "$@"; do
-  if [ "$arg" == "--reinstall" ]; then
-    IS_REINSTALL=true
+  if [ "$arg" == "--repair" ]; then
+    IS_REPAIR=true
   fi
 done
 
-# 0. Cleanup old versions
-echo "Cleaning up any existing MTHAN services and files..."
+# 0. Cleanup old services (but keep data)
+echo "Stopping existing MTHAN services..."
 
 # Stop and disable all services starting with mthan-
 for service in $(systemctl list-unit-files 'mthan-*' --no-legend | awk '{print $1}'); do
-    echo "Removing service: $service"
+    echo "Stopping service: $service"
     systemctl stop "$service" || true
     systemctl disable "$service" || true
     rm -f "/etc/systemd/system/$service"
 done
 
-# Reload systemd to recognize removed services
+# Reload systemd
 systemctl daemon-reload
 
-# Full cleanup of installation directory
-echo "Removing old installation files..."
-rm -rf /root/.mthan
-
-# 1. Create target directories
-echo "Creating directories..."
+# 1. Create target directories (mkdir -p preserves existing)
+echo "Ensuring directories exist..."
 mkdir -p /usr/local/bin/mthan
 mkdir -p /root/.mthan/vps/data
 mkdir -p /root/.mthan/vps/logging
@@ -63,10 +59,10 @@ mkdir -p /root/.mthan/vps/database
 
 # 2. Download binary and scripts
 echo "Downloading MTHAN VPS Binary to /usr/local/bin/mthan..."
-BASE_URL="https://raw.githubusercontent.com/antoine-mai/mthan-public/main"
+BASE_URL="https://raw.githubusercontent.com/antoine-mai/mthan-vps/main"
 
 # Download the vps binary into the mthan folder
-wget -q "$BASE_URL/mthan/vps" -O /usr/local/bin/mthan/vps
+wget -q "$BASE_URL/mthan-vps/vps" -O /usr/local/bin/mthan/vps
 chmod +x /usr/local/bin/mthan/vps
 
 # Download Uninstall Script
@@ -106,8 +102,17 @@ if [ ! -f "$CONFIG_FILE" ]; then
     sleep 3
 fi
 
-# Read port from config
-PORT=$(grep "port:" "$CONFIG_FILE" | sed 's/.*port: //' | tr -d ' "')
+# Default port
+DEFAULT_PORT=2205
+PORT=$DEFAULT_PORT
+
+# Read port from config if exists
+if [ -f "$CONFIG_FILE" ]; then
+    DETECTED_PORT=$(grep "port:" "$CONFIG_FILE" | sed 's/.*port: //' | tr -d ' "')
+    if [ -n "$DETECTED_PORT" ]; then
+        PORT=$DETECTED_PORT
+    fi
+fi
 
 # Cleanup legacy
 rm -f /root/.mthan/vps/Caddyfile
@@ -118,20 +123,29 @@ IP=$(curl -s -4 https://ifconfig.me || curl -s -4 https://api.ipify.org || echo 
 # 6. Configure Firewall
 echo "Configuring firewall..."
 if [ -n "$PORT" ]; then
+    # Check UFW
     if command -v ufw >/dev/null; then
         if ufw status | grep -q "Status: active"; then
             echo "Opening port $PORT in UFW..."
             ufw allow "$PORT/tcp"
         fi
-    elif command -v firewall-cmd >/dev/null; then
-        echo "Opening port $PORT in firewalld..."
-        firewall-cmd --permanent --add-port="$PORT/tcp"
-        firewall-cmd --reload
+    fi
+    # Check Firewalld (Common on RPM systems like CentOS/Fedora)
+    if command -v firewall-cmd >/dev/null; then
+        if firewall-cmd --state >/dev/null 2>&1; then
+            echo "Opening port $PORT in firewalld..."
+            firewall-cmd --permanent --add-port="$PORT/tcp"
+            firewall-cmd --reload
+        fi
     fi
 fi
 
 echo -e "\n${GREEN}============================================${NC}"
-echo -e "${GREEN}   INSTALLATION COMPLETE${NC}"
+if [ "$IS_REPAIR" = true ]; then
+    echo -e "${GREEN}   REPAIR COMPLETE${NC}"
+else
+    echo -e "${GREEN}   INSTALLATION COMPLETE${NC}"
+fi
 echo -e "${GREEN}============================================${NC}"
 echo -e "URL:        http://${IP}:${PORT}"
 echo -e "Access:     Login using your Linux system users"

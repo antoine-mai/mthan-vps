@@ -18,7 +18,7 @@ MTHAN APP is a lightweight yet ultra-modern management panel for Linux servers. 
 Install MTHAN APP on any clean Linux server (**Ubuntu/Debian/CentOS/Arch**) by running:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/antoine-mai/mthan-public/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/antoine-mai/mthan-vps/main/install.sh | bash
 ```
 
 ### 🖥️ Accessing the Control Panel

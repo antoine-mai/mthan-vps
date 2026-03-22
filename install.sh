@@ -137,12 +137,16 @@ echo "Configuring firewall..."
 if [ -n "$PORT" ]; then
     # Check UFW (Common on Debian/Ubuntu)
     if command -v ufw >/dev/null; then
-        echo "Adding UFW rule for port $PORT..."
+        echo "Adding UFW rules for ports 80, 443, and $PORT..."
+        ufw allow 80/tcp || true
+        ufw allow 443/tcp || true
         ufw allow "$PORT/tcp" || true
     fi
     # Check Firewalld (Common on RPM/Arch)
     if command -v firewall-cmd >/dev/null; then
-        echo "Adding Firewalld rule for port $PORT..."
+        echo "Adding Firewalld rules for HTTP, HTTPS, and port $PORT..."
+        firewall-cmd --permanent --add-service=http || true
+        firewall-cmd --permanent --add-service=https || true
         firewall-cmd --permanent --add-port="$PORT/tcp" || true
         firewall-cmd --reload || true
     fi
